@@ -1,0 +1,292 @@
+---
+title: "Bayesian Validation Report for Bioassays"
+author: "Eric Rozet"
+date: "`r format(Sys.time(), '%d.%m.%Y')`"
+output: 
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+params:
+  dta_val: NULL
+  L: NA
+  T2: NULL
+  T1: NULL
+  pi: NA
+  nRun: NA
+  nRep: NA
+  Prior: NA
+---
+\newpage
+
+# Introduction
+
+This report contains the results of the statistical analyses of validation data of a bioassay. It is coherent with the current regulatory guidelines found in the biopharmaceutical industry such as ICH Q2, ICH M10, USP 1033 and FDA corresponding documents. Nonetheless the methodology behind is a specific view of the author of this document.
+
+This report includes the following validation performance characteristics:
+
+- Precision of the bioassay over the whole range tested
+- Linearity of the results
+- Accuracy of the bioassay by target potency
+- Total analytical error
+
+
+For decision making about the validity of the assay a Probability profile is given that will allow to define the valid range.
+
+- The acceptance criteria has been set at: `r params$L`%.
+- The minimum probability to have results within the acceptance criteria has been set at: `r params$pi`.
+
+The format of the reportable value used in this report is based on the following:
+
+- number of runs: `r params$nRun`.
+- number of replicate per run: `r params$nRep`.
+
+
+The following priors have been used:
+
+```{r results = 'asis', echo=FALSE, comment=""}
+if (is.null(params$Prior)) {
+  tmp <- default_prior(data = params$dta_val,
+                             family = gaussian(),
+                             LRes ~ 1 + LTarget + (1 + LTarget|Run))
+  knitr::kable(tmp, caption = "Priors")
+
+} else { 
+    tmp <- params$Prior
+    knitr::kable(tmp, caption = "Priors")
+    }
+
+```
+
+\newpage
+
+
+# Raw data
+
+The following table and figure provide the results of the bioassay as well as the validation acceptance criteria of `r params$L`%.
+
+
+```{r echo=FALSE, fig.cap="Potency data and acceptance criteria"}
+  ggplot(params$dta_val, aes(x=Target, y=Res, colour=as.factor(Run))) +
+        geom_point() +
+        geom_line(aes(x=Target, y=(1-params$L/100)*Target ), colour = "red", linetype = 2) +
+        geom_line(aes(x=Target, y=(1/(1-params$L/100))*Target ), colour = "red", linetype = 2) +
+        labs(colour="Runs", x="Target potency", y="Measured potency", 
+           title= "Potency data and acceptance criteria")
+      
+
+```
+
+\newpage
+
+```{r results = 'asis', echo=FALSE}
+knitr::kable(params$dta_val, caption = "Validation raw data")
+```
+
+\newpage
+
+# Precision
+
+Overall precision of the bioassay across the full range tested is given in the following table and expressed as CV%.
+
+```{r results = 'asis', echo=FALSE}
+dtaLin <- params$T1
+dtaVal <- params$dta_val
+TargVal <- unique(dtaVal$LTarget)
+
+
+t4 <- matrix(nrow=length(TargVal), ncol=2)
+t7 <- matrix(nrow=length(TargVal), ncol=1)
+t8 <- matrix(nrow=length(TargVal), ncol=1)
+
+for(t in 1:length(TargVal)) {
+  t5<- dtaLin$sd_Run__Intercept**2/params$nRun + 
+                    2*((dtaLin$cor_Run__Intercept__LTarget*(dtaLin$sd_Run__Intercept/
+                                                              sqrt(params$nRun))*
+                          (dtaLin$sd_Run__LTarget/sqrt(params$nRun))))*TargVal[t] +
+                       (dtaLin$sd_Run__LTarget**2/params$nRun)*(TargVal[t]**2) +
+    dtaLin$sigma**2/(params$nRun*params$nRep)
+  t6<- dtaLin$sd_Run__Intercept**2/params$nRun + 
+                    2*((dtaLin$cor_Run__Intercept__LTarget*(dtaLin$sd_Run__Intercept/
+                                                              sqrt(params$nRun))*
+                          (dtaLin$sd_Run__LTarget/sqrt(params$nRun))))*TargVal[t] +
+                       (dtaLin$sd_Run__LTarget**2/params$nRun)*(TargVal[t]**2) 
+                    
+  t4[t,]<-  c(mean(t5), U95 = quantile(t5, probs=0.95, na.rm = TRUE)) 
+  t7[t,]<-  c(mean(dtaLin$sigma**2/(params$nRun*params$nRep))) 
+  t8[t,]<-  c(mean(t6)) 
+        
+}
+  
+t9 <- cbind(TargVal, t7, t8, t4)
+Pred_res05 <- as.data.frame(t9)
+Pred_res06 <-cbind(10**Pred_res05[,1],
+                   round(100*sqrt(exp(Pred_res05[,2]*log(10)**2)-1),digits=2),
+                   round(100*sqrt(exp(Pred_res05[,3]*log(10)**2)-1),digits=2),
+                   round(100*sqrt(exp(Pred_res05[,4]*log(10)**2)-1),digits=2),
+                   round(100*sqrt(exp(Pred_res05[,5]*log(10)**2)-1),digits=2)) 
+colnames(Pred_res06) <- c("Target Potency  ", "Repeatability CV(%)", "Between run CV(%)", "Total CV(%)", "Upper 95% CI limit")
+knitr::kable((Pred_res06), caption = "CV(%) by target potency with 95% Upper CI.")
+
+```          
+
+
+
+# Linearity of the results
+
+Linearity of the results is the relationship between measured potency and expected potency. It is provided in the following sections both after log10 transformation of the potency results and in their natural scale. In each case the acceptance criteria is also given.
+
+## Linearity after Log10 transformation
+
+The following graph shows the linearity of the results after log10 transformation and the acceptance criteria of `r params$L`%. 
+
+```{r echo=FALSE, fig.cap="Log10 linearity graph and acceptance criteria"}
+ ggplot(arrange(params$T2[1:10000,], LTarget), aes(x=LTarget, y=LRes)) +
+        geom_point() +
+        geom_point(data=params$dta_val, aes(colour=as.factor(Run))) +
+        geom_line(aes(x=LTarget, y=Uspec ), colour = "red", linetype = 2) +
+        geom_line(aes(x=LTarget, y=Lspec ), colour = "red", linetype = 2) +
+        labs(colour="Runs", x="Log10 Target potency", y="Log10 Measured potency", 
+             title= "Log10 linearity graph and acceptance criteria")
+```
+
+The following table give the equation of the linearity model with the corresponding 95% Credible Intervals of the posterior parameters.
+
+```{r results = 'asis', echo=FALSE}
+dtaLin <- params$T1
+sumLin <- rbind(c(mean(x=dtaLin$b_Intercept), quantile(x=dtaLin$b_Intercept,
+                                                       probs=c(0.025, 0.975))),
+                c(mean(x=dtaLin$b_LTarget), quantile(x=dtaLin$b_LTarget,
+                                                     probs=c(0.025, 0.975)))
+                )
+sumLin <- data.frame(Name=c("Intercept","Slope"), Param=c(mean(x=dtaLin$b_Intercept),
+                                                          mean(x=dtaLin$b_LTarget)),
+                     L95=c(quantile(x=dtaLin$b_Intercept, probs=c(0.025)),
+                           quantile(x=dtaLin$b_LTarget, probs=c(0.025))),
+                     U95=c(quantile(x=dtaLin$b_Intercept, probs=c(0.975)),
+                           quantile(x=dtaLin$b_LTarget, probs=c(0.975)))
+                     )
+
+colnames(sumLin) <- c(" " ,"Parameters", "Lower 95% CI limit", "Upper 95% CI limit")
+knitr::kable(sumLin, caption = "Slope & Intercept of log10 linearity, with 95% CI.")
+```
+
+\newpage
+
+## Linearity in natural scale
+
+The following graph shows the linearity of the results without transformation and the acceptance criteria of `r params$L`%. 
+
+    
+```{r echo=FALSE, fig.cap="Linearity graph and acceptance criteria"}    
+ggplot(arrange(params$T2[1:10000,], LTarget), aes(x=10**LTarget, y=10**LRes)) +
+        geom_point() +
+        geom_point(data=params$dta_val, aes(x=Target, y=Res, colour=as.factor(Run))) +
+        geom_line(aes(x=10**LTarget, y=10**Uspec ), colour = "red", linetype = 2) +
+        geom_line(aes(x=10**LTarget, y=10**Lspec ), colour = "red", linetype = 2) +
+        labs(colour="Runs", x="Target potency", y="Measured potency", 
+             title= "Linearity graph and acceptance criteria")
+```          
+
+\newpage
+
+# Accuracy
+The following tables give the mean posterior potencies by target potency with their 95% credible interval as well as the mean posterior recoveries and their corresponding 95% credible intervals. 
+
+
+```{r results = 'asis', echo=FALSE}
+dtaLin <- params$T1
+dtaVal <- params$dta_val
+TargVal <- unique(dtaVal$LTarget)
+
+pred.fit03 <- mutate(dtaLin,
+                       Interc= rnorm(n=length(b_Intercept),
+                                    mean = b_Intercept,
+                                    sd = sd_Run__Intercept/(sqrt(params$nRun))), 
+                       Slope=rnorm(n=length(b_Intercept), 
+                                   mean = b_LTarget, 
+                                   sd = sd_Run__LTarget/(sqrt(params$nRun))))
+  
+
+  
+t3 <- matrix(nrow=dim(pred.fit03)[1], ncol=length(TargVal))
+    for(j in 1:dim(pred.fit03)[1]) {
+    for(t in 1:length(TargVal)) {
+      t3[j,t] <- pred.fit03$Interc[j] + pred.fit03$Slope[j] * TargVal[t] 
+    }
+  }
+  
+Pred_res03 <- as.data.frame(t3)
+colnames(Pred_res03) <- as.character(TargVal)
+  
+Pred_res03 <- pivot_longer(data=Pred_res03, cols =everything(), names_to="LTarget",
+                             values_to = "LRes" ) |>
+                group_by(LTarget)  |>
+        summarise(Mu= mean(LRes), L025 = quantile(LRes, probs=0.025, na.rm = TRUE), 
+                  U975 = quantile(LRes, probs=0.975, na.rm = TRUE)) |>
+        mutate(Target=10**as.numeric(LTarget), Mean=10**Mu, Low=(10**L025), Up=(10**U975))
+      
+knitr::kable((Pred_res03)[,5:8], caption = "Mean by target potency with 95% CI.")
+
+Pred_res04 <-mutate(.data=(Pred_res03)[,5:8], Reco=100*Mean/Target, Low_Reco=100*Low/Target, Up_Reco=100*Up/Target)
+knitr::kable((Pred_res04)[,c(1,5:7)], caption = "Recovery(%) by target potency with 95% CI.")
+
+```          
+  
+
+\newpage
+
+# Total Error profile
+
+Total Error or Total analytical error is the combination of systematic error and random error. It depicts a region over the full tested range where the results have a defined probability to fall in. This probability has been set by the user as `r params$pi`. The acceptance criteria is also depicted and has been set at `r params$L`%.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE,  fig.cap="Total Error profile"}    
+      TI_spec01 <- group_by(.data = params$T2, LTarget) |>
+        summarise(L025 = quantile(LRes, probs=(1-params$pi)/2, na.rm = TRUE), 
+                  U975 = quantile(LRes, probs=(1+params$pi)/2), na.rm = TRUE)
+      TI_spec01 <- mutate(.data = TI_spec01, L025=100*(10**(L025-LTarget)-1), 
+                          U975=100*(10**(U975-LTarget)-1) )
+      
+      L <-1-params$L/100
+      U<- 1/L
+      
+      
+      ggplot(arrange(TI_spec01, LTarget), aes(x=10**LTarget, y=U975)) +
+        geom_smooth(color="blue") +
+        geom_smooth(aes(x=10**LTarget, y=L025), color="blue") +
+        geom_hline(yintercept=100*(L-1), linetype="dashed", color="red") +  
+        geom_hline(yintercept=100*(U-1), linetype="dashed", color="red") +
+        geom_point(data=params$dta_val, aes(x=Target, y=100*(Res-Target)/Target,
+                                            colour=as.factor(Run))) +
+        labs(colour="Runs", x="Target potency", y="Relative Error (%)", 
+             title= "Total Error profile and acceptance criteria")
+```          
+      
+\newpage
+
+# Probability to be within acceptance criteria
+
+To decide if the bioassay is valid and the range over which it is the case, Probability profile can be used. This Probability profile shows over the range of potency tested, the probability to be within the acceptance criteria of `r params$L`%. As long as this probability is higher or equal to the minimum probability of `r params$pi` set by the user, the bioassay can be considered as valid.
+The valid range is then defined by the smallest and highest potencies fulfilling this condition.
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.cap="Probability profile"}    
+Proba_spec01 <- mutate(.data = params$T2, ID = (LRes > Lspec & LRes < Uspec) ) |>
+        group_by(LTarget) |>
+        summarise(pi = mean(ID)) 
+ggplot(arrange(Proba_spec01, LTarget), aes(x=10**LTarget, y=pi)) +
+        geom_smooth(color="blue") + 
+        geom_hline(yintercept=params$pi, linetype="dashed", color="red") +
+        labs(x="Target potency", y="Probability to be within acceptance criteria", 
+             title= "Probability to be within acceptance criteria")
+
+```          
+
+
+\newpage
+# R traceability
+
+```{r echo=FALSE}
+R.Version()
+sessionInfo()
+```
