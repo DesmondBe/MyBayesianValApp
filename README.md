@@ -1,6 +1,5 @@
 # MyBayesianValApp
-Shiny app for analyzing bioassay validation data in Bayesian
-
+Shiny app for analyzing bioassay validation data in Bayesian: try the app <a href='https://erozet.shinyapps.io/BVapp/'> here ! </a>
 The aim of this app are:
                 
                   1. Analyze validation data of bioassay using a Bayesian approach, 
